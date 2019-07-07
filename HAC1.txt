@@ -1,0 +1,79 @@
+package org.inceptez.spark.sql
+import org.apache.spark.SparkContext
+import org.apache.spark.SparkConf
+import org.apache.spark.sql.SQLContext
+import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql._;
+
+object hack1 {
+  
+  case class incidents (incidentnum:String, category:String, description:String, dayofweek:String, date:String, time:String, pddistrict:String, resolution:String, address:String, x:Double, y:Double, pdid:String);
+  
+     def main(args:Array[String]) {
+  
+ 
+    val conf = new SparkConf().setAppName("SQL1").setMaster("local[*]")
+    val sc = new SparkContext(conf)
+    val sqlc = new SQLContext(sc)
+    sc.setLogLevel("ERROR");
+    
+     val spark=SparkSession.builder().appName("Sample sql app").master("local[*]").getOrCreate();
+  
+  import spark.implicits._;
+  
+ //var sqlctxt = spark.sqlcontext;
+  
+  
+  val sfpddf = spark.read.format("csv")
+    .option("header",true)
+    .option("delimiter",",")
+    .option("inferSchema",true)
+    .load("file:/home/hduser/install/IZ_WORKOUTS/Projects/spark_hack1/sfpd.csv")
+    .toDF("incidentnum", "category", "description", "dayofweek", "date", "time", "pddistrict", "resolution", "address", "X", "Y", "pdid")
+    
+  //  sfpddf.show(5);
+  
+  val sfpdds = sfpddf.as[incidents];
+  
+  sfpdds.registerTempTable("sfpd");
+  
+  val sfpd1 = spark.sql("""select pddistrict,count(pddistrict) as count from sfpd group by pddistrict order by count desc""");
+  sfpd1.show(5);
+  
+  val sfpd2 = spark.sql("""select resolution,count(incidentnum) as count from sfpd group by resolution order by count desc limit 10""");
+  sfpd2.show(10);
+  
+  val  sfpd3 = spark.sql("""select category,count(incidentnum) as count from sfpd group by category order by count desc""");
+  sfpd3.show(3);
+  
+  sfpd2.write.mode("overwrite").json("hdfs:/user/hduser/sfpd_json/");
+  
+  val sfpd4 = spark.sql("""select * from sfpd where upper(category) = "WARRANTY"""");
+  
+  sfpd4.write.mode("overwrite").parquet("hdfs:/user/hduser/sfpd_parquet/");
+  
+  spark.udf.register("getyear", (inputdt:String)=>{inputdt.substring(inputdt.lastIndexOf('/')+1) });
+  
+ //   spark.sql("select distinct(getyear(date)) from sfpd").show(5);
+    
+ //   spark.sql("select date from sfpd").show(5);
+  
+  val incyearSQL = spark.sql("SELECT getyear(date), count(incidentnum) AS countbyyear FROM sfpd GROUP BY getyear(date) ORDER BY countbyyear DESC");
+  
+  val inc2014sql = spark.sql("""SELECT category, address, resolution FROM sfpd where getyear(date) in ("14")""");
+  inc2014sql.show(5);
+  
+  val inc2015sql = spark.sql("""SELECT address, resolution FROM sfpd where getyear(date) in ("15") and upper(category) in ("VANDALISM")""");
+  inc2015sql.show(5);
+  
+  spark.udf.register("getmonth", (inputdt:String)=>{inputdt.substring(0,inputdt.indexOf('/')) });
+  
+ // spark.sql("select distinct(getmonth(date)) from sfpd").show(5);
+  
+  val inc2014monsql = spark.sql("""SELECT getmonth(date) as month, count(incidentnum) as count FROM sfpd where getyear(date) in ("14") group by getmonth(date) order by count desc""");
+  
+  inc2014monsql.show(5);
+  
+}
+     
+}
